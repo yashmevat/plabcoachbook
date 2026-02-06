@@ -101,6 +101,7 @@ export async function POST(req) {
 
     const decoded = verifyToken(token);
     const authorId = decoded.userId;
+    const userRole = decoded.role_id;
 
     const { name, description, book_id, topic_id } = await req.json();
 
@@ -112,17 +113,20 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
-    // Verify book belongs to author
-    const [books] = await pool.query(
-      'SELECT id FROM books WHERE id = ? AND author_id = ?',
-      [book_id, authorId]
-    );
+    // Superadmin can create subtopics for any book, authors can only create subtopics for their own books
+    if (userRole !== 1) { // Not SUPERADMIN
+      // Verify book belongs to author
+      const [books] = await pool.query(
+        'SELECT id FROM books WHERE id = ? AND author_id = ?',
+        [book_id, authorId]
+      );
 
-    if (books.length === 0) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Book not found or unauthorized' 
-      }, { status: 404 });
+      if (books.length === 0) {
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Book not found or unauthorized' 
+        }, { status: 404 });
+      }
     }
 
     // Verify topic belongs to book
@@ -169,6 +173,7 @@ export async function PUT(req) {
 
     const decoded = verifyToken(token);
     const authorId = decoded.userId;
+    const userRole = decoded.role_id;
 
     const { id, name, description } = await req.json();
 
@@ -180,11 +185,19 @@ export async function PUT(req) {
       }, { status: 400 });
     }
 
-    // Update subtopic (only if it belongs to the author)
-    const [result] = await pool.query(
-      'UPDATE subtopics SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND author_id = ?',
-      [name.trim(), description?.trim() || null, id, authorId]
-    );
+    // Superadmin can update any subtopic, authors can only update their own
+    let result;
+    if (userRole === 1) { // SUPERADMIN
+      [result] = await pool.query(
+        'UPDATE subtopics SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [name.trim(), description?.trim() || null, id]
+      );
+    } else {
+      [result] = await pool.query(
+        'UPDATE subtopics SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND author_id = ?',
+        [name.trim(), description?.trim() || null, id, authorId]
+      );
+    }
 
     if (result.affectedRows === 0) {
       return NextResponse.json({ 
@@ -217,6 +230,7 @@ export async function DELETE(req) {
 
     const decoded = verifyToken(token);
     const authorId = decoded.userId;
+    const userRole = decoded.role_id;
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
@@ -228,11 +242,19 @@ export async function DELETE(req) {
       }, { status: 400 });
     }
 
-    // Delete subtopic (only if it belongs to the author)
-    const [result] = await pool.query(
-      'DELETE FROM subtopics WHERE id = ? AND author_id = ?',
-      [id, authorId]
-    );
+    // Superadmin can delete any subtopic, authors can only delete their own
+    let result;
+    if (userRole === 1) { // SUPERADMIN
+      [result] = await pool.query(
+        'DELETE FROM subtopics WHERE id = ?',
+        [id]
+      );
+    } else {
+      [result] = await pool.query(
+        'DELETE FROM subtopics WHERE id = ? AND author_id = ?',
+        [id, authorId]
+      );
+    }
 
     if (result.affectedRows === 0) {
       return NextResponse.json({ 

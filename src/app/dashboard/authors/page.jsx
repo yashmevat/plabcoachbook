@@ -15,7 +15,7 @@ export default function AuthorsPage() {
 
   const fetchAuthors = async () => {
     try {
-      const res = await fetch('/api/authors');
+      const res = await fetch('/api/superadmin/authors');
       const data = await res.json();
       if (data.success) {
         setAuthors(data.data);
@@ -30,7 +30,7 @@ export default function AuthorsPage() {
     setLoading(true);
     
     try {
-      const res = await fetch('/api/authors', {
+      const res = await fetch('/api/superadmin/authors', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)

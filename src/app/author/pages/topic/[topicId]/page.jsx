@@ -638,7 +638,7 @@ export default function TopicPagesPage() {
 
       alert(message);
       await fetchPages();
-      router.push('/author/books');
+      // router.push('/author/books');
     } else {
       alert('❌ Failed to save pages. Please try again.');
     }

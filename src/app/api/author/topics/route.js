@@ -21,17 +21,20 @@ export async function POST(request) {
       );
     }
 
-    // Verify that the book belongs to the author
-    const [bookCheck] = await pool.query(
-      'SELECT id FROM books WHERE id = ? AND author_id = ?',
-      [book_id, user.id]
-    );
-
-    if (bookCheck.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Book not found or unauthorized' },
-        { status: 403 }
+    // Superadmin can create topics for any book, authors can only create topics for their own books
+    if (user.role_id !== ROLES.SUPERADMIN) {
+      // Verify that the book belongs to the author
+      const [bookCheck] = await pool.query(
+        'SELECT id FROM books WHERE id = ? AND author_id = ?',
+        [book_id, user.id]
       );
+
+      if (bookCheck.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Book not found or unauthorized' },
+          { status: 403 }
+        );
+      }
     }
 
     // Insert topic
@@ -102,19 +105,22 @@ export async function PUT(request) {
       );
     }
 
-    // Verify topic belongs to a book owned by the author
-    const [topicCheck] = await pool.query(
-      `SELECT t.id FROM topics t 
-       JOIN books b ON t.book_id = b.id 
-       WHERE t.id = ? AND b.author_id = ?`,
-      [id, user.id]
-    );
-
-    if (topicCheck.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Topic not found or unauthorized' },
-        { status: 403 }
+    // Superadmin can edit any topic, authors can only edit their own
+    if (user.role_id !== ROLES.SUPERADMIN) {
+      // Verify topic belongs to a book owned by the author
+      const [topicCheck] = await pool.query(
+        `SELECT t.id FROM topics t 
+         JOIN books b ON t.book_id = b.id 
+         WHERE t.id = ? AND b.author_id = ?`,
+        [id, user.id]
       );
+
+      if (topicCheck.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Topic not found or unauthorized' },
+          { status: 403 }
+        );
+      }
     }
 
     // Update topic name
@@ -153,19 +159,22 @@ export async function DELETE(request) {
       );
     }
 
-    // Verify topic belongs to a book owned by the author
-    const [topicCheck] = await pool.query(
-      `SELECT t.id FROM topics t 
-       JOIN books b ON t.book_id = b.id 
-       WHERE t.id = ? AND b.author_id = ?`,
-      [id, user.id]
-    );
-
-    if (topicCheck.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Topic not found or unauthorized' },
-        { status: 403 }
+    // Superadmin can delete any topic, authors can only delete their own
+    if (user.role_id !== ROLES.SUPERADMIN) {
+      // Verify topic belongs to a book owned by the author
+      const [topicCheck] = await pool.query(
+        `SELECT t.id FROM topics t 
+         JOIN books b ON t.book_id = b.id 
+         WHERE t.id = ? AND b.author_id = ?`,
+        [id, user.id]
       );
+
+      if (topicCheck.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Topic not found or unauthorized' },
+          { status: 403 }
+        );
+      }
     }
 
     // Delete pages for this topic (including subtopic pages)

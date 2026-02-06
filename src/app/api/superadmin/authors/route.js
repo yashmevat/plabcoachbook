@@ -68,6 +68,7 @@ export async function POST(request) {
 
     // Generate random password (12 characters)
     // const randomPassword = generatePassword(12);
+    
     const randomPassword = "1234";
     console.log('Generated password for', username, ':', randomPassword);
 

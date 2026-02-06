@@ -77,7 +77,7 @@ export function proxy(request) {
     try {
       const decoded = verifyToken(token);
       
-      if (!decoded || decoded.role_id !== ROLE_AUTHOR) {
+      if (!decoded || (decoded.role_id !== ROLE_AUTHOR && decoded.role_id !== ROLE_SUPERADMIN)) {
         const response = NextResponse.redirect(new URL('/login', request.url));
         response.cookies.set('token', '', { maxAge: 0 });
         return response;

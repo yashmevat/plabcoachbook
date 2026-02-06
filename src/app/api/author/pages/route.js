@@ -100,11 +100,19 @@ export async function POST(request) {
     }
 
     if (subtopic_id) {
-      // Verify subtopic belongs to author
-      const [subtopics] = await pool.query(
-        'SELECT id, topic_id FROM subtopics WHERE id = ? AND author_id = ?',
-        [subtopic_id, user.id]
-      );
+      // Superadmin can create pages for any subtopic, authors can only create pages for their own subtopics
+      let subtopics;
+      if (user.role_id === ROLES.SUPERADMIN) {
+        [subtopics] = await pool.query(
+          'SELECT id, topic_id FROM subtopics WHERE id = ?',
+          [subtopic_id]
+        );
+      } else {
+        [subtopics] = await pool.query(
+          'SELECT id, topic_id FROM subtopics WHERE id = ? AND author_id = ?',
+          [subtopic_id, user.id]
+        );
+      }
 
       if (subtopics.length === 0) {
         return NextResponse.json(
@@ -124,13 +132,21 @@ export async function POST(request) {
       });
     } else {
       // Creating page for topic (subtopic_id will be NULL)
-      // Verify topic belongs to author
-      const [topics] = await pool.query(
-        `SELECT t.id FROM topics t
-         JOIN books b ON t.book_id = b.id
-         WHERE t.id = ? AND b.author_id = ?`,
-        [topic_id, user.id]
-      );
+      // Superadmin can create pages for any topic, authors can only create pages for their own topics
+      let topics;
+      if (user.role_id === ROLES.SUPERADMIN) {
+        [topics] = await pool.query(
+          'SELECT id FROM topics WHERE id = ?',
+          [topic_id]
+        );
+      } else {
+        [topics] = await pool.query(
+          `SELECT t.id FROM topics t
+           JOIN books b ON t.book_id = b.id
+           WHERE t.id = ? AND b.author_id = ?`,
+          [topic_id, user.id]
+        );
+      }
 
       if (topics.length === 0) {
         return NextResponse.json(
@@ -173,19 +189,22 @@ export async function PUT(request) {
       );
     }
 
-    // Verify page belongs to author through subtopic
-    const [pages] = await pool.query(
-      `SELECT p.id FROM pages p
-       INNER JOIN subtopics st ON p.subtopic_id = st.id
-       WHERE p.id = ? AND st.author_id = ?`,
-      [id, user.id]
-    );
-
-    if (pages.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Page not found or unauthorized' },
-        { status: 403 }
+    // Superadmin can update any page, authors can only update their own pages
+    if (user.role_id !== ROLES.SUPERADMIN) {
+      // Verify page belongs to author through subtopic
+      const [pages] = await pool.query(
+        `SELECT p.id FROM pages p
+         INNER JOIN subtopics st ON p.subtopic_id = st.id
+         WHERE p.id = ? AND st.author_id = ?`,
+        [id, user.id]
       );
+
+      if (pages.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Page not found or unauthorized' },
+          { status: 403 }
+        );
+      }
     }
 
     await pool.query(
@@ -219,19 +238,22 @@ export async function DELETE(request) {
       );
     }
 
-    // Verify page belongs to author through subtopic
-    const [pages] = await pool.query(
-      `SELECT p.id FROM pages p
-       INNER JOIN subtopics st ON p.subtopic_id = st.id
-       WHERE p.id = ? AND st.author_id = ?`,
-      [id, user.id]
-    );
-
-    if (pages.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Page not found or unauthorized' },
-        { status: 403 }
+    // Superadmin can delete any page, authors can only delete their own pages
+    if (user.role_id !== ROLES.SUPERADMIN) {
+      // Verify page belongs to author through subtopic
+      const [pages] = await pool.query(
+        `SELECT p.id FROM pages p
+         INNER JOIN subtopics st ON p.subtopic_id = st.id
+         WHERE p.id = ? AND st.author_id = ?`,
+        [id, user.id]
       );
+
+      if (pages.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Page not found or unauthorized' },
+          { status: 403 }
+        );
+      }
     }
 
     await pool.query('DELETE FROM pages WHERE id = ?', [id]);

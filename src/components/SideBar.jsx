@@ -62,7 +62,7 @@ export default function Sidebar() {
 
   const superadminLinks = [
     { href: '/dashboard/authors', label: '👤 Authors', icon: '👤' },
-    // { href: '/dashboard/create-book', label: '📚 Create Book', icon: '📚' },
+    { href: '/dashboard/create-book', label: '📚 Create Book', icon: '📚' },
     // { href: '/dashboard/topics', label: '📝 Topics', icon: '📝' },
     // { href: '/dashboard/mappings', label: '🔗 Mappings', icon: '🔗' }
   ];
