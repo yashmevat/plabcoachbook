@@ -20,15 +20,76 @@ export async function POST(req) {
     }
 
     const { bookIds, updates } = await req.json();
-    // bookIds: array of book IDs to update
+    // bookIds: array of book IDs to update (if length > 1, it means update all books in clone tree)
     // updates: { topics: [...], subtopics: [...], pages: [...], bookTitle: '...' }
+    
+    // NEW LOGIC: If bookIds has more than 1 ID, we need to find ALL books in the clone tree
+    let allBookIdsToUpdate = [...bookIds];
+    
+    if (bookIds.length > 1) {
+      // This means "update all books" was selected
+      // Walk the clone tree and find all related books
+      const sourceBookId = bookIds[0]; // The book being edited
+      const bookIdsSet = new Set();
+      
+      // Helper function to walk up the tree to find root
+      async function findRoot(bookId) {
+        const [book] = await connection.query(
+          'SELECT id, clone_id FROM books WHERE id = ?',
+          [bookId]
+        );
+        
+        if (!book || book.length === 0) return bookId;
+        
+        if (book[0].clone_id === null) {
+          return book[0].id; // This is the root
+        } else {
+          return await findRoot(book[0].clone_id); // Walk up
+        }
+      }
+      
+      // Helper function to find all descendants
+      async function findAllDescendants(rootId, visited = new Set()) {
+        if (visited.has(rootId)) return [];
+        visited.add(rootId);
+        
+        const descendants = [rootId];
+        
+        // Find all books that have clone_id = rootId
+        const [children] = await connection.query(
+          'SELECT id FROM books WHERE clone_id = ?',
+          [rootId]
+        );
+        
+        for (const child of children) {
+          const childDescendants = await findAllDescendants(child.id, visited);
+          descendants.push(...childDescendants);
+        }
+        
+        return descendants;
+      }
+      
+      // Find the root of the tree
+      const rootId = await findRoot(sourceBookId);
+      
+      // Find all books in the tree (root + all descendants)
+      const allRelatedBooks = await findAllDescendants(rootId);
+      
+      allBookIdsToUpdate = [...new Set(allRelatedBooks)];
+      
+      console.log('\n========== CLONE TREE UPDATE ==========');
+      console.log('Source book ID:', sourceBookId);
+      console.log('Root book ID:', rootId);
+      console.log('All books to update:', allBookIdsToUpdate);
+    }
 
     console.log('\n========== UPDATE-BOOKS REQUEST ==========');
-    console.log('bookIds:', bookIds);
+    console.log('Original bookIds:', bookIds);
+    console.log('All books to update:', allBookIdsToUpdate);
     console.log('updates.bookTitle:', updates.bookTitle);
     console.log('updates.topics:', JSON.stringify(updates.topics, null, 2));
 
-    if (!bookIds || !Array.isArray(bookIds) || bookIds.length === 0) {
+    if (!allBookIdsToUpdate || allBookIdsToUpdate.length === 0) {
       return NextResponse.json({ 
         success: false, 
         error: 'Book IDs array is required' 
@@ -39,7 +100,7 @@ export async function POST(req) {
 
     // Update book titles if provided
     if (updates.bookTitle) {
-      for (const bookId of bookIds) {
+      for (const bookId of allBookIdsToUpdate) {
         await connection.query(
           'UPDATE books SET title = ? WHERE id = ?',
           [updates.bookTitle, bookId]
@@ -48,7 +109,7 @@ export async function POST(req) {
     }
 
     // Process updates for each book
-    for (const bookId of bookIds) {
+    for (const bookId of allBookIdsToUpdate) {
       console.log('\n=== Processing bookId:', bookId, '===');
       
       // Store ALL pages with their topic/subtopic structure before deletion
@@ -207,7 +268,7 @@ export async function POST(req) {
 
     return NextResponse.json({ 
       success: true, 
-      message: `Successfully updated ${bookIds.length} book(s)`
+      message: `Successfully updated ${allBookIdsToUpdate.length} book(s) in the clone tree`
     });
 
   } catch (error) {

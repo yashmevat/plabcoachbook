@@ -483,7 +483,7 @@ export default function EditClonedBookPage() {
       
       if (data.success) {
         localStorage.removeItem('clonedBookData');
-        alert(updateBoth ? 'Both books updated successfully!' : 'Book updated successfully!');
+        alert(updateBoth ? 'All books updated successfully!' : 'Book updated successfully!');
         router.push('/dashboard/create-book');
       } else {
         alert('Error: ' + data.error);
@@ -706,7 +706,7 @@ export default function EditClonedBookPage() {
                 disabled={loading}
                 className="w-full sm:w-auto sm:flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition shadow-lg hover:shadow-xl font-medium"
               >
-                {loading ? 'Processing...' : 'Save Changes'}
+                {loading ? 'Processing...' : 'Update Changes'}
               </button>
               <button 
                 type="button"
@@ -747,8 +747,8 @@ export default function EditClonedBookPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
                 <div>
-                  <div className="font-semibold">Both Books</div>
-                  <div className="text-xs text-indigo-100">Update the cloned book AND the original book</div>
+                  <div className="font-semibold">All Books</div>
+                  <div className="text-xs text-indigo-100">Update all books in the clone tree</div>
                 </div>
               </button>
 

@@ -12,7 +12,7 @@ export default function CreateBookPage() {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedBooks, setExpandedBooks] = useState({});
-  const [expandedTopics, setExpandedTopics] = useState({});
+  const [expandedTopics, setExpandedTopics] = useState({}); // Left panel topics
   const [clonedTopics, setClonedTopics] = useState([]); // Track cloned topics with original IDs
   const [modifiedItems, setModifiedItems] = useState([]); // Track modified topics/subtopics
   const savingTopics = useRef(new Set());
@@ -555,6 +555,133 @@ export default function CreateBookPage() {
     setLoading(false);
   };
 
+  const handleAddSubtopicToExpandedTopic = async (originalSubtopic, originalTopic) => {
+    // Find which topic has subtopics expanded (hasSubtopics = true) in the right panel
+    const expandedTopicIndices = topics
+      .map((t, idx) => ({ topic: t, index: idx }))
+      .filter(item => item.topic.hasSubtopics && item.topic.topicId) // Must have topicId
+      .map(item => item.index);
+    
+    if (expandedTopicIndices.length === 0) {
+      alert('Please add subtopics to a saved topic in the right panel first (topic must be saved)');
+      return;
+    }
+    
+    // Use the first expanded topic
+    const targetTopicIndex = expandedTopicIndices[0];
+    const targetTopic = topics[targetTopicIndex];
+    
+    if (!targetTopic || !targetTopic.topicId) {
+      alert('Target topic not found or not yet saved');
+      return;
+    }
+    
+    // Check if subtopic already exists in target topic
+    const exists = targetTopic.subtopics?.some(
+      s => s.originalSubtopicId === originalSubtopic.id || s.name === originalSubtopic.name
+    );
+    
+    if (exists) {
+      alert(`Subtopic "${originalSubtopic.name}" already exists in topic "${targetTopic.name}"`);
+      return;
+    }
+    
+    setLoading(true);
+    
+    try {
+      // Create subtopic on server immediately
+      const res = await fetch('/api/superadmin/subtopics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name: originalSubtopic.name,
+          book_id: currentBookId,
+          topic_id: targetTopic.topicId
+        })
+      });
+      
+      const data = await res.json();
+      
+      if (data.success) {
+        const newSubtopicId = data.id;
+        
+        // Copy pages from original subtopic to new subtopic
+        let pagesCopied = 0;
+        try {
+          const pagesRes = await fetch('/api/superadmin/clone-subtopic-pages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              originalSubtopicId: originalSubtopic.id,
+              newSubtopicId: newSubtopicId,
+              newTopicId: targetTopic.topicId
+            })
+          });
+          
+          const pagesData = await pagesRes.json();
+          if (pagesData.success) {
+            pagesCopied = pagesData.pagesCopied || 0;
+          } else {
+            console.warn('Pages copy failed:', pagesData.error);
+          }
+        } catch (err) {
+          console.warn('Failed to copy pages:', err);
+        }
+        
+        // Add subtopic to target topic with proper IDs
+        const newTopics = [...topics];
+        if (!newTopics[targetTopicIndex].hasSubtopics) {
+          newTopics[targetTopicIndex].hasSubtopics = true;
+          newTopics[targetTopicIndex].subtopics = [];
+        }
+        
+        newTopics[targetTopicIndex].subtopics.push({
+          id: Date.now(),
+          name: originalSubtopic.name,
+          subtopicId: newSubtopicId,
+          isCloned: true,
+          originalSubtopicId: originalSubtopic.id
+        });
+        
+        setTopics(newTopics);
+        
+        // Update clonedTopics tracking
+        const existingClonedTopic = clonedTopics.find(
+          ct => ct.newTopicId === targetTopic.topicId
+        );
+        
+        if (existingClonedTopic) {
+          // Add to existing cloned topic's subtopics
+          existingClonedTopic.subtopics.push({
+            newSubtopicId: newSubtopicId,
+            originalSubtopicId: originalSubtopic.id
+          });
+          setClonedTopics([...clonedTopics]);
+        } else {
+          // Create new entry for this topic (it may be manually created, not cloned)
+          setClonedTopics([...clonedTopics, {
+            newTopicId: targetTopic.topicId,
+            originalTopicId: targetTopic.originalTopicId || null,
+            subtopics: [{
+              newSubtopicId: newSubtopicId,
+              originalSubtopicId: originalSubtopic.id
+            }]
+          }]);
+        }
+        
+        saveFormState();
+        alert(`Subtopic "${originalSubtopic.name}" added to topic "${targetTopic.name}"!\n${pagesCopied} pages copied successfully.`);
+      } else {
+        alert('Error creating subtopic: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Error adding subtopic:', error);
+      alert('Failed to add subtopic');
+    }
+    
+    setLoading(false);
+  };
+
   const handleRemoveSubtopic = async (topicIndex, subtopicIndex) => {
     const subtopic = topics[topicIndex].subtopics[subtopicIndex];
     
@@ -911,6 +1038,16 @@ export default function CreateBookPage() {
                                       <p className="text-xs font-medium text-gray-900">{subtopic.name}</p>
                                       <p className="text-xs text-gray-500">{subtopic.page_count || 0} pages</p>
                                     </div>
+                                    <button
+                                      onClick={() => handleAddSubtopicToExpandedTopic(subtopic, topic)}
+                                      disabled={loading}
+                                      className="flex-shrink-0 p-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition disabled:opacity-50"
+                                      title="Add this subtopic to expanded topic"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                      </svg>
+                                    </button>
                                   </div>
                                 ))}
                               </div>
@@ -977,9 +1114,16 @@ export default function CreateBookPage() {
                 )}
 
                 {topics.map((topic, index) => (
-                  <div key={topic.id} className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <div key={topic.id} className={`mb-3 p-3 rounded-lg border ${topic.hasSubtopics ? 'bg-blue-50 border-blue-300 border-2' : 'bg-gray-50 border-gray-200'}`}>
                     {/* Topic Input Row */}
                     <div className="flex items-center gap-2 mb-2">
+                      {topic.hasSubtopics && (
+                        <div className="flex-shrink-0">
+                          <span className="inline-flex items-center px-2 py-0.5 bg-blue-600 text-white rounded text-xs font-bold" title="This topic can receive subtopics from left panel">
+                            ⬅ ACTIVE
+                          </span>
+                        </div>
+                      )}
                       <input
                         type="text"
                         value={topic.name}

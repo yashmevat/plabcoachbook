@@ -50,10 +50,16 @@ export async function POST(req) {
     const originalBook = originalBooks[0];
     const bookTitle = newTitle || `${originalBook.title} (Clone)`;
 
-    // Create new book with superadmin as author
+    // Create new book with superadmin as author and set clone_id
     const [newBookResult] = await connection.query(
-      'INSERT INTO books (title, author_id) VALUES (?, ?)',
-      [bookTitle, decoded.userId]
+      'INSERT INTO books (title, author_id, clone_id) VALUES (?, ?, ?)',
+      [bookTitle, decoded.userId, bookId]
+    );
+
+    // Update original book to mark it as having clones
+    await connection.query(
+      'UPDATE books SET has_clones = TRUE WHERE id = ?',
+      [bookId]
     );
 
     const newBookId = newBookResult.insertId;
