@@ -38,9 +38,8 @@ export async function POST(request) {
     }
 
 
-      const randomNumber = Math.floor(100000 + Math.random() * 900000);
-    const timestamp = Date.now();
-    const cloneId = `${randomNumber}-${timestamp}`;
+     
+    const cloneId = Date.now().toString();
 
     // Insert topic
     const [result] = await pool.query(

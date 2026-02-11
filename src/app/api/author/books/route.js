@@ -22,16 +22,9 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
-    // Generate unique identifier: random number + timestamp
-    const randomNumber = Math.floor(100000 + Math.random() * 900000);
-    const timestamp = Date.now();
-    const cloneId = `${randomNumber}-${timestamp}`;
-    
-    // Alternative: Just timestamp
-    // const cloneId = Date.now().toString();
-    
-    // Alternative: Random number + date string
-    // const cloneId = `${randomNumber}-${new Date().toISOString().slice(0, 10)}`;
+    // Generate a compact unique identifier for cloning
+    // Use timestamp-only to avoid truncation if DB column is small
+    const cloneId = Date.now().toString();
 
     // Insert book with clone_id as unique identifier
     const [bookResult] = await pool.query(

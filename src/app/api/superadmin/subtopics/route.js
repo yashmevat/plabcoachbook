@@ -73,9 +73,8 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
- const randomNumber = Math.floor(100000 + Math.random() * 900000);
-    const timestamp = Date.now();
-    const cloneId = `${randomNumber}-${timestamp}`;
+
+    const cloneId = Date.now().toString();
     // Insert subtopic
     const [result] = await pool.query(
       'INSERT INTO subtopics (name, book_id, topic_id, author_id, clone_id) VALUES (?, ?, ?, ?, ?)',

@@ -74,9 +74,7 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
-     const randomNumber = Math.floor(100000 + Math.random() * 900000);
-    const timestamp = Date.now();
-    const cloneId = `${randomNumber}-${timestamp}`;
+    const cloneId = Date.now().toString();
     // Insert topic (no author_id in topics table according to schema)
     const [result] = await pool.query(
       'INSERT INTO topics (name, book_id, description, clone_id) VALUES (?, ?, ?, ?)',

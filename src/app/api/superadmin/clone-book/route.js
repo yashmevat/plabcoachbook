@@ -55,9 +55,8 @@ export async function POST(req) {
     
     if (!groupCloneId) {
       // Generate a unique clone_id for the group
-      const randomNumber = Math.floor(100000 + Math.random() * 900000);
-      const timestamp = Date.now();
-      groupCloneId = `${randomNumber}-${timestamp}`;
+      groupCloneId = Date.now().toString();
+      
       
       // Set it on the original book
       await connection.query(
