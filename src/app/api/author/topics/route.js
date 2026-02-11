@@ -37,10 +37,15 @@ export async function POST(request) {
       }
     }
 
+
+      const randomNumber = Math.floor(100000 + Math.random() * 900000);
+    const timestamp = Date.now();
+    const cloneId = `${randomNumber}-${timestamp}`;
+
     // Insert topic
     const [result] = await pool.query(
-      'INSERT INTO topics (name, book_id) VALUES (?, ?)',
-      [name, book_id]
+      'INSERT INTO topics (name, book_id, clone_id) VALUES (?, ?, ?)',
+      [name, book_id, cloneId]
     );
 
     return NextResponse.json({ 

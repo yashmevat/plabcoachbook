@@ -22,10 +22,21 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
-    // Insert book
+    // Generate unique identifier: random number + timestamp
+    const randomNumber = Math.floor(100000 + Math.random() * 900000);
+    const timestamp = Date.now();
+    const cloneId = `${randomNumber}-${timestamp}`;
+    
+    // Alternative: Just timestamp
+    // const cloneId = Date.now().toString();
+    
+    // Alternative: Random number + date string
+    // const cloneId = `${randomNumber}-${new Date().toISOString().slice(0, 10)}`;
+
+    // Insert book with clone_id as unique identifier
     const [bookResult] = await pool.query(
-      'INSERT INTO books (title, author_id) VALUES (?, ?)',
-      [title, authorId]
+      'INSERT INTO books (title, author_id, clone_id) VALUES (?, ?, ?)',
+      [title, authorId, cloneId]
     );
 
     const bookId = bookResult.insertId;
@@ -33,7 +44,8 @@ export async function POST(req) {
     return NextResponse.json({ 
       success: true, 
       message: 'Book created successfully',
-      bookId 
+      bookId,
+      cloneId
     });
 
   } catch (error) {
@@ -155,7 +167,6 @@ export async function PUT(req) {
 }
 
 export async function DELETE(req) {
-  let connection;
   try {
     const token = req.cookies.get('token')?.value;
     if (!token) {
@@ -175,74 +186,18 @@ export async function DELETE(req) {
       }, { status: 400 });
     }
 
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-
-    // Lock and fetch the book to be deleted
-    const [books] = await connection.query(
-      'SELECT id, clone_id FROM books WHERE id = ? AND author_id = ? FOR UPDATE',
-      [bookId, authorId]
-    );
-
-    if (!books || books.length === 0) {
-      await connection.rollback();
-      connection.release();
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Book not found or unauthorized' 
-      }, { status: 404 });
-    }
-
-    const bookRow = books[0];
-    const parentId = bookRow.clone_id; // may be null
-
-    // Delete the book (topics/pages cascade if configured)
-    const [result] = await connection.query(
+    // Delete book (topics will be deleted by CASCADE)
+    const [result] = await pool.query(
       'DELETE FROM books WHERE id = ? AND author_id = ?',
       [bookId, authorId]
     );
 
     if (result.affectedRows === 0) {
-      await connection.rollback();
-      connection.release();
       return NextResponse.json({ 
         success: false, 
         error: 'Book not found or unauthorized' 
       }, { status: 404 });
     }
-
-    // If deleted book was a clone, recompute has_clones for its parent
-    if (parentId) {
-      const [[{ cnt }]] = await connection.query(
-        'SELECT COUNT(*) AS cnt FROM books WHERE clone_id = ?',
-        [parentId]
-      );
-      await connection.query(
-        'UPDATE books SET has_clones = ? WHERE id = ?',
-        [cnt > 0 ? 1 : 0, parentId]
-      );
-    } else {
-      // Deleted was an original/root. Reparent its direct children: make them roots.
-      await connection.query(
-        'UPDATE books SET clone_id = NULL WHERE clone_id = ?',
-        [bookId]
-      );
-
-      // Recompute has_clones for all books (cheap with index) to keep consistency
-      await connection.query(`
-        UPDATE books o
-        LEFT JOIN (
-          SELECT clone_id, COUNT(*) AS cnt
-          FROM books
-          WHERE clone_id IS NOT NULL
-          GROUP BY clone_id
-        ) t ON t.clone_id = o.id
-        SET o.has_clones = CASE WHEN IFNULL(t.cnt,0) > 0 THEN 1 ELSE 0 END
-      `);
-    }
-
-    await connection.commit();
-    connection.release();
 
     return NextResponse.json({ 
       success: true, 
@@ -251,10 +206,6 @@ export async function DELETE(req) {
 
   } catch (error) {
     console.error('Error deleting book:', error);
-    if (connection) {
-      try { await connection.rollback(); } catch (e) {}
-      try { connection.release(); } catch (e) {}
-    }
     return NextResponse.json({ 
       success: false, 
       error: 'Failed to delete book' 

@@ -3,6 +3,52 @@ import { NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/auth';
 import pool from '@/lib/db';
 
+export async function GET(req) {
+  try {
+    const token = req.cookies.get('token')?.value;
+    if (!token) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const decoded = verifyToken(token);
+    
+    // Check if user is superadmin or author
+    if (decoded.role_id !== 1 && decoded.role_id !== 2) {
+      return NextResponse.json({ success: false, error: 'Unauthorized - Admin access required' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const topicId = searchParams.get('topicId');
+
+    if (!topicId) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'topicId is required' 
+      }, { status: 400 });
+    }
+
+    // Fetch subtopics for the topic
+    const [subtopics] = await pool.query(
+      `SELECT * FROM subtopics 
+       WHERE topic_id = ?
+       ORDER BY id`,
+      [topicId]
+    );
+
+    return NextResponse.json({ 
+      success: true, 
+      data: subtopics
+    });
+
+  } catch (error) {
+    console.error('Error fetching subtopics:', error);
+    return NextResponse.json({ 
+      success: false, 
+      error: 'Failed to fetch subtopics' 
+    }, { status: 500 });
+  }
+}
+
 export async function POST(req) {
   try {
     const token = req.cookies.get('token')?.value;
@@ -13,7 +59,7 @@ export async function POST(req) {
     const decoded = verifyToken(token);
     
     // Check if user is superadmin
-    if (decoded.role_id !== 1) {
+    if (decoded.role_id !== 1 && decoded.role_id !== 2) {
       return NextResponse.json({ success: false, error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
@@ -27,10 +73,13 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
+ const randomNumber = Math.floor(100000 + Math.random() * 900000);
+    const timestamp = Date.now();
+    const cloneId = `${randomNumber}-${timestamp}`;
     // Insert subtopic
     const [result] = await pool.query(
-      'INSERT INTO subtopics (name, book_id, topic_id, author_id) VALUES (?, ?, ?, ?)',
-      [name, book_id, topic_id, superadminId]
+      'INSERT INTO subtopics (name, book_id, topic_id, author_id, clone_id) VALUES (?, ?, ?, ?, ?)',
+      [name, book_id, topic_id, superadminId, cloneId]
     );
 
     return NextResponse.json({ 
@@ -58,7 +107,7 @@ export async function PUT(req) {
     const decoded = verifyToken(token);
     
     // Check if user is superadmin
-    if (decoded.role_id !== 1) {
+    if (decoded.role_id !== 1 &&decoded.role_id !== 2) {
       return NextResponse.json({ success: false, error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
@@ -101,7 +150,7 @@ export async function DELETE(req) {
     const decoded = verifyToken(token);
     
     // Check if user is superadmin
-    if (decoded.role_id !== 1) {
+    if (decoded.role_id !== 1 && decoded.role_id !== 2) {
       return NextResponse.json({ success: false, error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 

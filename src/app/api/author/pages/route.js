@@ -191,12 +191,14 @@ export async function PUT(request) {
 
     // Superadmin can update any page, authors can only update their own pages
     if (user.role_id !== ROLES.SUPERADMIN) {
-      // Verify page belongs to author through subtopic
+      // Verify page belongs to author through subtopic or topic
       const [pages] = await pool.query(
         `SELECT p.id FROM pages p
-         INNER JOIN subtopics st ON p.subtopic_id = st.id
-         WHERE p.id = ? AND st.author_id = ?`,
-        [id, user.id]
+         LEFT JOIN subtopics st ON p.subtopic_id = st.id
+         LEFT JOIN topics t ON p.topic_id = t.id
+         LEFT JOIN books b ON t.book_id = b.id
+         WHERE p.id = ? AND (st.author_id = ? OR b.author_id = ?)`,
+        [id, user.id, user.id]
       );
 
       if (pages.length === 0) {
@@ -240,12 +242,14 @@ export async function DELETE(request) {
 
     // Superadmin can delete any page, authors can only delete their own pages
     if (user.role_id !== ROLES.SUPERADMIN) {
-      // Verify page belongs to author through subtopic
+      // Verify page belongs to author through subtopic or topic
       const [pages] = await pool.query(
         `SELECT p.id FROM pages p
-         INNER JOIN subtopics st ON p.subtopic_id = st.id
-         WHERE p.id = ? AND st.author_id = ?`,
-        [id, user.id]
+         LEFT JOIN subtopics st ON p.subtopic_id = st.id
+         LEFT JOIN topics t ON p.topic_id = t.id
+         LEFT JOIN books b ON t.book_id = b.id
+         WHERE p.id = ? AND (st.author_id = ? OR b.author_id = ?)`,
+        [id, user.id, user.id]
       );
 
       if (pages.length === 0) {

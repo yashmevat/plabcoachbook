@@ -18,7 +18,7 @@ export async function POST(req) {
     const decoded = verifyToken(token);
     
     // Check if user is superadmin
-    if (decoded.role_id !== 1) {
+    if (decoded.role_id !== 1 &&decoded.role_id !== 2) {
       return NextResponse.json({ success: false, error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
@@ -50,16 +50,26 @@ export async function POST(req) {
     const originalBook = originalBooks[0];
     const bookTitle = newTitle || `${originalBook.title} (Clone)`;
 
-    // Create new book with superadmin as author and set clone_id
+    // Get or generate clone_id (shared group identifier)
+    let groupCloneId = originalBook.clone_id;
+    
+    if (!groupCloneId) {
+      // Generate a unique clone_id for the group
+      const randomNumber = Math.floor(100000 + Math.random() * 900000);
+      const timestamp = Date.now();
+      groupCloneId = `${randomNumber}-${timestamp}`;
+      
+      // Set it on the original book
+      await connection.query(
+        'UPDATE books SET clone_id = ? WHERE id = ?',
+        [groupCloneId, bookId]
+      );
+    }
+
+    // Create new book with same clone_id (joins the group)
     const [newBookResult] = await connection.query(
       'INSERT INTO books (title, author_id, clone_id) VALUES (?, ?, ?)',
-      [bookTitle, decoded.userId, bookId]
-    );
-
-    // Update original book to mark it as having clones
-    await connection.query(
-      'UPDATE books SET has_clones = TRUE WHERE id = ?',
-      [bookId]
+      [bookTitle, decoded.userId, groupCloneId]
     );
 
     const newBookId = newBookResult.insertId;
@@ -74,9 +84,22 @@ export async function POST(req) {
 
     // Clone topics
     for (const topic of topics) {
+      // Get or generate topic clone_id
+      let topicCloneId = topic.clone_id;
+      
+      if (!topicCloneId) {
+        const randomNumber = Math.floor(100000 + Math.random() * 900000);
+        const timestamp = Date.now();
+        topicCloneId = `${randomNumber}-${timestamp}`;
+        await connection.query(
+          'UPDATE topics SET clone_id = ? WHERE id = ?',
+          [topicCloneId, topic.id]
+        );
+      }
+
       const [newTopicResult] = await connection.query(
-        'INSERT INTO topics (name, description, book_id) VALUES (?, ?, ?)',
-        [topic.name, topic.description, newBookId]
+        'INSERT INTO topics (name, description, book_id, clone_id) VALUES (?, ?, ?, ?)',
+        [topic.name, topic.description, newBookId, topicCloneId]
       );
 
       const newTopicId = newTopicResult.insertId;
@@ -92,9 +115,22 @@ export async function POST(req) {
 
       // Clone subtopics
       for (const subtopic of subtopics) {
+        // Get or generate subtopic clone_id
+        let subtopicCloneId = subtopic.clone_id;
+        
+        if (!subtopicCloneId) {
+          const randomNumber = Math.floor(100000 + Math.random() * 900000);
+          const timestamp = Date.now();
+          subtopicCloneId = `${randomNumber}-${timestamp}`;
+          await connection.query(
+            'UPDATE subtopics SET clone_id = ? WHERE id = ?',
+            [subtopicCloneId, subtopic.id]
+          );
+        }
+
         const [newSubtopicResult] = await connection.query(
-          'INSERT INTO subtopics (name, description, topic_id, book_id, author_id) VALUES (?, ?, ?, ?, ?)',
-          [subtopic.name, subtopic.description, newTopicId, newBookId, decoded.userId]
+          'INSERT INTO subtopics (name, description, topic_id, book_id, author_id, clone_id) VALUES (?, ?, ?, ?, ?, ?)',
+          [subtopic.name, subtopic.description, newTopicId, newBookId, decoded.userId, subtopicCloneId]
         );
 
         const newSubtopicId = newSubtopicResult.insertId;
@@ -155,7 +191,8 @@ export async function POST(req) {
       SELECT 
         t.id,
         t.name,
-        t.description
+        t.description,
+        t.clone_id
       FROM topics t
       WHERE t.book_id = ?
       ORDER BY t.created_at
@@ -166,7 +203,8 @@ export async function POST(req) {
         SELECT 
           id,
           name,
-          description
+          description,
+          clone_id
         FROM subtopics
         WHERE topic_id = ?
         ORDER BY created_at

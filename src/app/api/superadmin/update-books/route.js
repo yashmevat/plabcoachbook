@@ -15,72 +15,51 @@ export async function POST(req) {
     const decoded = verifyToken(token);
     
     // Check if user is superadmin
-    if (decoded.role_id !== 1) {
+    if (decoded.role_id !== 1 &&decoded.role_id !== 2) {
       return NextResponse.json({ success: false, error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
     const { bookIds, updates } = await req.json();
-    // bookIds: array of book IDs to update (if length > 1, it means update all books in clone tree)
+    // bookIds: array of book IDs to update (if length > 1, it means update all books in clone group)
     // updates: { topics: [...], subtopics: [...], pages: [...], bookTitle: '...' }
     
-    // NEW LOGIC: If bookIds has more than 1 ID, we need to find ALL books in the clone tree
+    // NEW LOGIC: If bookIds has more than 1 ID, find all books with matching clone_id
     let allBookIdsToUpdate = [...bookIds];
     
     if (bookIds.length > 1) {
       // This means "update all books" was selected
-      // Walk the clone tree and find all related books
+      // Find all books that share the same clone_id
       const sourceBookId = bookIds[0]; // The book being edited
-      const bookIdsSet = new Set();
       
-      // Helper function to walk up the tree to find root
-      async function findRoot(bookId) {
-        const [book] = await connection.query(
-          'SELECT id, clone_id FROM books WHERE id = ?',
-          [bookId]
-        );
-        
-        if (!book || book.length === 0) return bookId;
-        
-        if (book[0].clone_id === null) {
-          return book[0].id; // This is the root
-        } else {
-          return await findRoot(book[0].clone_id); // Walk up
-        }
+      // Get the clone_id of the source book
+      const [sourceBook] = await connection.query(
+        'SELECT clone_id FROM books WHERE id = ?',
+        [sourceBookId]
+      );
+      
+      if (!sourceBook || sourceBook.length === 0) {
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Source book not found' 
+        }, { status: 404 });
       }
       
-      // Helper function to find all descendants
-      async function findAllDescendants(rootId, visited = new Set()) {
-        if (visited.has(rootId)) return [];
-        visited.add(rootId);
-        
-        const descendants = [rootId];
-        
-        // Find all books that have clone_id = rootId
-        const [children] = await connection.query(
+      const groupCloneId = sourceBook[0].clone_id;
+      
+      if (groupCloneId) {
+        // Find all books with matching clone_id
+        const [relatedBooks] = await connection.query(
           'SELECT id FROM books WHERE clone_id = ?',
-          [rootId]
+          [groupCloneId]
         );
         
-        for (const child of children) {
-          const childDescendants = await findAllDescendants(child.id, visited);
-          descendants.push(...childDescendants);
-        }
+        allBookIdsToUpdate = relatedBooks.map(b => b.id);
         
-        return descendants;
+        console.log('\n========== CLONE GROUP UPDATE ==========');
+        console.log('Source book ID:', sourceBookId);
+        console.log('Group clone_id:', groupCloneId);
+        console.log('All books in group:', allBookIdsToUpdate);
       }
-      
-      // Find the root of the tree
-      const rootId = await findRoot(sourceBookId);
-      
-      // Find all books in the tree (root + all descendants)
-      const allRelatedBooks = await findAllDescendants(rootId);
-      
-      allBookIdsToUpdate = [...new Set(allRelatedBooks)];
-      
-      console.log('\n========== CLONE TREE UPDATE ==========');
-      console.log('Source book ID:', sourceBookId);
-      console.log('Root book ID:', rootId);
-      console.log('All books to update:', allBookIdsToUpdate);
     }
 
     console.log('\n========== UPDATE-BOOKS REQUEST ==========');
@@ -189,10 +168,13 @@ export async function POST(req) {
         for (let topicIndex = 0; topicIndex < updates.topics.length; topicIndex++) {
           const topic = updates.topics[topicIndex];
           
-          // Insert topic
+          // Preserve clone_id if it exists in the topic
+          const topicCloneId = topic.clone_id || null;
+          
+          // Insert topic with clone_id
           const [topicResult] = await connection.query(
-            'INSERT INTO topics (name, description, book_id) VALUES (?, ?, ?)',
-            [topic.name, topic.description || null, bookId]
+            'INSERT INTO topics (name, description, book_id, clone_id) VALUES (?, ?, ?, ?)',
+            [topic.name, topic.description || null, bookId, topicCloneId]
           );
 
           const newTopicId = topicResult.insertId;
@@ -227,9 +209,12 @@ export async function POST(req) {
             for (let subtopicIndex = 0; subtopicIndex < topic.subtopics.length; subtopicIndex++) {
               const subtopic = topic.subtopics[subtopicIndex];
               
+              // Preserve clone_id if it exists in the subtopic
+              const subtopicCloneId = subtopic.clone_id || null;
+              
               const [subtopicResult] = await connection.query(
-                'INSERT INTO subtopics (name, description, topic_id, book_id, author_id) VALUES (?, ?, ?, ?, ?)',
-                [subtopic.name, subtopic.description || null, newTopicId, bookId, authorId]
+                'INSERT INTO subtopics (name, description, topic_id, book_id, author_id, clone_id) VALUES (?, ?, ?, ?, ?, ?)',
+                [subtopic.name, subtopic.description || null, newTopicId, bookId, authorId, subtopicCloneId]
               );
 
               const newSubtopicId = subtopicResult.insertId;

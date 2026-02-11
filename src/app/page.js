@@ -219,10 +219,7 @@ export default function Home() {
                       </h3>
                     </div>
                     
-                    {/* Subject Badge */}
-                    <div className="absolute top-2 sm:top-3 right-2 sm:right-3 bg-white/95 backdrop-blur-sm px-2 sm:px-3 py-1 rounded-full text-gray-700 text-xs font-semibold shadow-md">
-                      {book.subject_name}
-                    </div>
+                   
 
                     {/* Decorative Elements */}
                     <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-white/20 rounded-full blur-2xl"></div>
@@ -242,11 +239,7 @@ export default function Home() {
                       </span>
                     </div>
                     
-                    <div className="flex items-center gap-2 mb-3 flex-wrap">
-                      <span className="px-2 sm:px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-xs font-medium">
-                        {book.topic_name}
-                      </span>
-                    </div>
+                    
                     
                     <button
                       onClick={(e) => {

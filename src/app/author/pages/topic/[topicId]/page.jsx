@@ -35,36 +35,62 @@ export default function TopicPagesPage() {
   const CONTENT_HEIGHT = PAGE_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT;
   const CONTENT_WIDTH = PAGE_WIDTH - (CONTENT_PADDING * 2);
 
-  useEffect(() => {
-    const loadQuill = async () => {
-      const link = document.createElement('link');
-      link.href = 'https://cdn.quilljs.com/1.3.6/quill.snow.css';
-      link.rel = 'stylesheet';
-      document.head.appendChild(link);
+ useEffect(() => {
+  const loadQuill = async () => {
+    // Load Quill CSS
+    const link = document.createElement('link');
+    link.href = 'https://cdn.quilljs.com/1.3.6/quill.snow.css';
+    link.rel = 'stylesheet';
+    document.head.appendChild(link);
 
-      const script = document.createElement('script');
-      script.src = 'https://cdn.quilljs.com/1.3.6/quill.js';
-      script.onload = () => {
+    // Load Quill JS
+    const script = document.createElement('script');
+    script.src = 'https://cdn.quilljs.com/1.3.6/quill.js';
+    
+    script.onload = () => {
+      // Load Image Resize Module
+      const resizeScript = document.createElement('script');
+      resizeScript.src = 'https://unpkg.com/quill-image-resize-module@3.0.0/image-resize.min.js';
+      
+      resizeScript.onload = () => {
+        // Register module
+        try {
+          window.Quill.register('modules/imageResize', window.ImageResize.default || window.ImageResize);
+          console.log('✅ Image Resize module registered');
+        } catch (e) {
+          console.error('❌ Failed to register Image Resize:', e);
+        }
+        
         setTimeout(() => setQuillLoaded(true), 200);
       };
-      document.body.appendChild(script);
+      
+      resizeScript.onerror = () => {
+        console.error('❌ Failed to load Image Resize module');
+        setTimeout(() => setQuillLoaded(true), 200);
+      };
+      
+      document.body.appendChild(resizeScript);
     };
+    
+    document.body.appendChild(script);
+  };
 
-    loadQuill();
-    fetchPages();
-    fetchTopicDetails();
+  loadQuill();
+  fetchPages();
+  fetchTopicDetails();
 
-    return () => {
-      Object.values(quillRefs.current).forEach(quill => {
-        if (quill) {
-          const container = quill.container;
-          if (container && container.parentNode) {
-            container.parentNode.innerHTML = '';
-          }
+  return () => {
+    Object.values(quillRefs.current).forEach(quill => {
+      if (quill) {
+        const container = quill.container;
+        if (container && container.parentNode) {
+          container.parentNode.innerHTML = '';
         }
-      });
-    };
-  }, [topicId]);
+      }
+    });
+  };
+}, [topicId]);
+
 
   const fetchTopicDetails = async () => {
     try {
@@ -233,18 +259,28 @@ export default function TopicPagesPage() {
       }
     }
 
-    const quill = new window.Quill(`#${editorId}`, {
+     const quill = new window.Quill(`#${editorId}`, {
       theme: 'snow',
       modules: {
         toolbar: [
-          [{ 'header': [1, 2, 3, false] }],
-          ['bold', 'italic', 'underline', 'strike'],
-          [{ 'color': [] }, { 'background': [] }],
-          [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-          [{ 'align': [] }],
-          ['link', 'image'],
-          ['clean']
-        ],
+  [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+  [{ 'font': [] }],  // Font family selector
+  [{ 'size': ['small', false, 'large', 'huge'] }],  // Font size
+  ['bold', 'italic', 'underline', 'strike'],
+  [{ 'color': [] }, { 'background': [] }],
+  [{ 'script': 'sub'}, { 'script': 'super' }],  // Subscript/Superscript
+  [{ 'list': 'ordered'}, { 'list': 'bullet' }, { 'list': 'check' }],  // Checklist
+  [{ 'indent': '-1'}, { 'indent': '+1' }],  // Indent/outdent
+  [{ 'direction': 'rtl' }],  // Text direction
+  [{ 'align': [] }],
+  ['blockquote', 'code-block'],  // Blockquote and code block
+  ['link', 'image'],  // Video embedding
+  ['clean']  // Remove formatting
+],
+ imageResize: {
+    modules: ['Resize', 'DisplaySize', 'Toolbar']
+  },
+
         clipboard: {
           matchVisual: false
         }
@@ -712,21 +748,32 @@ export default function TopicPagesPage() {
 
       container.innerHTML = '';
       
-      const quill = new window.Quill('#editor-0', {
+       const quill = new window.Quill('#editor-0', {
         theme: 'snow',
         modules: {
-          toolbar: [
-            [{ 'header': [1, 2, 3, false] }],
-            ['bold', 'italic', 'underline', 'strike'],
-            [{ 'color': [] }, { 'background': [] }],
-            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-            [{ 'align': [] }],
-            ['link', 'image'],
-            ['clean']
-          ]
+        toolbar: [
+  [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+  [{ 'font': [] }],  // Font family selector
+  [{ 'size': ['small', false, 'large', 'huge'] }],  // Font size
+  ['bold', 'italic', 'underline', 'strike'],
+  [{ 'color': [] }, { 'background': [] }],
+  [{ 'script': 'sub'}, { 'script': 'super' }],  // Subscript/Superscript
+  [{ 'list': 'ordered'}, { 'list': 'bullet' }, { 'list': 'check' }],  // Checklist
+  [{ 'indent': '-1'}, { 'indent': '+1' }],  // Indent/outdent
+  [{ 'direction': 'rtl' }],  // Text direction
+  [{ 'align': [] }],
+  ['blockquote', 'code-block'],  // Blockquote and code block
+  ['link', 'image'],  // Video embedding
+  ['clean']  // Remove formatting
+], imageResize: {
+    modules: ['Resize', 'DisplaySize', 'Toolbar']
+  },
+
         },
         placeholder: 'Edit your content...'
       });
+
+
 
       quill.root.innerHTML = page.content;
 

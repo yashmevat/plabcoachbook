@@ -13,7 +13,7 @@ export async function GET(req) {
     const decoded = verifyToken(token);
     
     // Check if user is superadmin
-    if (decoded.role_id !== 1) {
+    if (decoded.role_id !== 1 && decoded.role_id !== 2) {
       return NextResponse.json({ success: false, error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
@@ -38,6 +38,7 @@ export async function GET(req) {
           t.id,
           t.name,
           t.description,
+          t.clone_id,
           (SELECT COUNT(*) FROM subtopics WHERE topic_id = t.id) as subtopic_count,
           (SELECT COUNT(*) FROM pages WHERE topic_id = t.id) as page_count
         FROM topics t
@@ -52,6 +53,7 @@ export async function GET(req) {
             s.id,
             s.name,
             s.description,
+            s.clone_id,
             (SELECT COUNT(*) FROM pages WHERE subtopic_id = s.id) as page_count
           FROM subtopics s
           WHERE s.topic_id = ?
@@ -85,7 +87,7 @@ export async function POST(req) {
     const decoded = verifyToken(token);
     
     // Check if user is superadmin
-    if (decoded.role_id !== 1) {
+    if (decoded.role_id !== 1 && decoded.role_id !== 2) {
       return NextResponse.json({ success: false, error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
@@ -132,7 +134,7 @@ export async function DELETE(req) {
     const decoded = verifyToken(token);
     
     // Check if user is superadmin
-    if (decoded.role_id !== 1) {
+    if (decoded.role_id !== 1 && decoded.role_id !== 2) {
       return NextResponse.json({ success: false, error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 

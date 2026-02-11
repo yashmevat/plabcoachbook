@@ -29,11 +29,13 @@ export default function EditClonedBookPage() {
           id: Date.now() + idx,
           name: topic.name,
           topicId: topic.id,
+          clone_id: topic.clone_id || null,
           hasSubtopics: topic.subtopics && topic.subtopics.length > 0,
           subtopics: (topic.subtopics || []).map((subtopic, subIdx) => ({
             id: Date.now() + idx * 1000 + subIdx,
             name: subtopic.name,
-            subtopicId: subtopic.id
+            subtopicId: subtopic.id,
+            clone_id: subtopic.clone_id || null
           }))
         }));
         
@@ -460,9 +462,11 @@ export default function EditClonedBookPage() {
         topics: topics.map(topic => ({
           name: topic.name,
           description: null,
+          clone_id: topic.clone_id || null,
           subtopics: topic.subtopics.map(subtopic => ({
             name: subtopic.name,
-            description: null
+            description: null,
+            clone_id: subtopic.clone_id || null
           }))
         }))
       };

@@ -12,13 +12,13 @@ export async function POST(req) {
 
     const decoded = verifyToken(token);
     
-    // Check if user is superadmin
-    if (decoded.role_id !== 1) {
+    // Check if user is superadmin or author
+    if (decoded.role_id !== 1 && decoded.role_id !== 2) {
       return NextResponse.json({ success: false, error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
     const superadminId = decoded.userId;
-    const { topic_id, new_book_id } = await req.json();
+    const { topic_id, new_book_id, new_topic_name } = await req.json();
 
     if (!topic_id || !new_book_id) {
       return NextResponse.json({ 
@@ -49,10 +49,24 @@ export async function POST(req) {
 
       const originalTopic = topics[0];
 
-      // Create new topic (no author_id in topics table)
+      // Get or generate topic clone_id
+      let topicCloneId = originalTopic.clone_id;
+      
+      if (!topicCloneId) {
+        const randomNumber = Math.floor(100000 + Math.random() * 900000);
+        const timestamp = Date.now();
+        topicCloneId = `${randomNumber}-${timestamp}`;
+        await connection.query(
+          'UPDATE topics SET clone_id = ? WHERE id = ?',
+          [topicCloneId, topic_id]
+        );
+      }
+
+      // Create new topic with same clone_id
+      const topicName = new_topic_name || originalTopic.name;
       const [topicResult] = await connection.query(
-        'INSERT INTO topics (name, book_id, description) VALUES (?, ?, ?)',
-        [originalTopic.name, new_book_id, originalTopic.description]
+        'INSERT INTO topics (name, book_id, description, clone_id) VALUES (?, ?, ?, ?)',
+        [topicName, new_book_id, originalTopic.description, topicCloneId]
       );
 
       const newTopicId = topicResult.insertId;
@@ -67,9 +81,22 @@ export async function POST(req) {
 
       // Clone each subtopic
       for (const subtopic of subtopics) {
+        // Get or generate subtopic clone_id
+        let subtopicCloneId = subtopic.clone_id;
+        
+        if (!subtopicCloneId) {
+          const randomNumber = Math.floor(100000 + Math.random() * 900000);
+          const timestamp = Date.now();
+          subtopicCloneId = `${randomNumber}-${timestamp}`;
+          await connection.query(
+            'UPDATE subtopics SET clone_id = ? WHERE id = ?',
+            [subtopicCloneId, subtopic.id]
+          );
+        }
+
         const [subtopicResult] = await connection.query(
-          'INSERT INTO subtopics (name, book_id, topic_id, author_id, description) VALUES (?, ?, ?, ?, ?)',
-          [subtopic.name, new_book_id, newTopicId, superadminId, subtopic.description]
+          'INSERT INTO subtopics (name, book_id, topic_id, author_id, description, clone_id) VALUES (?, ?, ?, ?, ?, ?)',
+          [subtopic.name, new_book_id, newTopicId, superadminId, subtopic.description, subtopicCloneId]
         );
 
         subtopicIdMap[subtopic.id] = subtopicResult.insertId;

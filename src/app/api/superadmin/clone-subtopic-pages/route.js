@@ -14,8 +14,8 @@ export async function POST(req) {
 
     const decoded = verifyToken(token);
     
-    // Check if user is superadmin
-    if (decoded.role_id !== 1) {
+    // Check if user is superadmin or author
+    if (decoded.role_id !== 1 && decoded.role_id !== 2) {
       return NextResponse.json({ success: false, error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 

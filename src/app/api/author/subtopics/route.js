@@ -142,10 +142,12 @@ export async function POST(req) {
       }, { status: 404 });
     }
 
-    // Insert subtopic with author_id
+      const randomNumber = Math.floor(100000 + Math.random() * 900000);
+    const timestamp = Date.now();
+    const cloneId = `${randomNumber}-${timestamp}`;
     const [result] = await pool.query(
-      'INSERT INTO subtopics (name, description, topic_id, book_id, author_id) VALUES (?, ?, ?, ?, ?)',
-      [name.trim(), description?.trim() || null, topic_id, book_id, authorId]
+      'INSERT INTO subtopics (name, description, topic_id, book_id, author_id, clone_id) VALUES (?, ?, ?, ?, ?, ?)',
+      [name.trim(), description?.trim() || null, topic_id, book_id, authorId, cloneId]
     );
 
     return NextResponse.json({ 

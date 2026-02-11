@@ -3,6 +3,54 @@ import { NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/auth';
 import pool from '@/lib/db';
 
+export async function GET(req) {
+  try {
+    const token = req.cookies.get('token')?.value;
+    if (!token) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const decoded = verifyToken(token);
+    
+    // Check if user is superadmin or author
+    if (decoded.role_id !== 1 && decoded.role_id !== 2) {
+      return NextResponse.json({ success: false, error: 'Unauthorized - Admin access required' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const bookId = searchParams.get('bookId');
+
+    if (!bookId) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'bookId is required' 
+      }, { status: 400 });
+    }
+
+    // Fetch topics for the book with subtopic count
+    const [topics] = await pool.query(
+      `SELECT t.*, 
+        (SELECT COUNT(*) FROM subtopics WHERE topic_id = t.id) as subtopic_count
+       FROM topics t 
+       WHERE t.book_id = ?
+       ORDER BY t.id`,
+      [bookId]
+    );
+
+    return NextResponse.json({ 
+      success: true, 
+      data: topics
+    });
+
+  } catch (error) {
+    console.error('Error fetching topics:', error);
+    return NextResponse.json({ 
+      success: false, 
+      error: 'Failed to fetch topics' 
+    }, { status: 500 });
+  }
+}
+
 export async function POST(req) {
   try {
     const token = req.cookies.get('token')?.value;
@@ -13,7 +61,7 @@ export async function POST(req) {
     const decoded = verifyToken(token);
     
     // Check if user is superadmin
-    if (decoded.role_id !== 1) {
+    if (decoded.role_id !== 1 &&decoded.role_id !== 2) {
       return NextResponse.json({ success: false, error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
@@ -26,10 +74,13 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
+     const randomNumber = Math.floor(100000 + Math.random() * 900000);
+    const timestamp = Date.now();
+    const cloneId = `${randomNumber}-${timestamp}`;
     // Insert topic (no author_id in topics table according to schema)
     const [result] = await pool.query(
-      'INSERT INTO topics (name, book_id, description) VALUES (?, ?, ?)',
-      [name, book_id, null]
+      'INSERT INTO topics (name, book_id, description, clone_id) VALUES (?, ?, ?, ?)',
+      [name, book_id, null, cloneId]
     );
 
     return NextResponse.json({ 
@@ -57,7 +108,7 @@ export async function PUT(req) {
     const decoded = verifyToken(token);
     
     // Check if user is superadmin
-    if (decoded.role_id !== 1) {
+    if (decoded.role_id !== 1 &&decoded.role_id !== 2) {
       return NextResponse.json({ success: false, error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
@@ -100,7 +151,7 @@ export async function DELETE(req) {
     const decoded = verifyToken(token);
     
     // Check if user is superadmin
-    if (decoded.role_id !== 1) {
+    if (decoded.role_id !== 1 && decoded.role_id !== 2) {
       return NextResponse.json({ success: false, error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 

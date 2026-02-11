@@ -24,7 +24,13 @@ export default function BookReaderPage() {
   const [dragStartX, setDragStartX] = useState(0);
   const [dragCurrentX, setDragCurrentX] = useState(0);
   const [canDrag, setCanDrag] = useState(false);
-  const [fontSize, setFontSize] = useState(100);
+  const [fontSize, setFontSize] = useState(() => {
+    if (typeof window === 'undefined') return 100;
+    const width = window.innerWidth;
+    if (width < 1024) return 100; // Mobile & Tablet
+    if (width <= 1300) return 55; // Small Desktop (1024-1300px)
+    return 65; // Large Desktop (>1300px)
+  });
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [pageViewMode, setPageViewMode] = useState('double'); // 'single' or 'double' for desktop
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1920);
@@ -168,11 +174,16 @@ export default function BookReaderPage() {
     }
   }, []);
 
-  // Check if mobile/tablet
+  // Check if mobile/tablet and set responsive fontSize
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 1024);
-      setWindowWidth(window.innerWidth);
+      const width = window.innerWidth;
+      setIsMobile(width < 1024);
+      setWindowWidth(width);
+      
+      // Update fontSize based on device width
+      const newFontSize = width < 1024 ? 100 : (width <= 1300 ? 55 : 65);
+      setFontSize(newFontSize);
     };
 
     checkMobile();
@@ -2031,7 +2042,7 @@ export default function BookReaderPage() {
 
 
         {/* Book Content Area */}
-        <div className="flex justify-center items-start px-2 sm:px-4 py-4 sm:py-8 min-h-0">
+        <div className="flex justify-center items-start px-2 sm:px-4 py-4 sm:py-8 md:py-3 min-h-0">
           {!bookOpened ? (
             <div className="book-closed" onClick={openBook}>
               <div className="book-page" style={{ width: `${A4_WIDTH}px`, height: `${A4_HEIGHT}px` }}>
@@ -2199,7 +2210,7 @@ export default function BookReaderPage() {
                   <button
                     onClick={goToPreviousPage}
                     disabled={isFlipping}
-                    className={`hidden lg:block absolute left-[-80px] top-1/2 -translate-y-1/2 p-4 rounded-full shadow-lg transition-all hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed z-10 ${
+                    className={`hidden lg:block absolute left-[-80px] top-[150px] p-4 rounded-full shadow-lg transition-all hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed z-10 ${
                       isDarkMode ? 'bg-gray-800 text-white hover:bg-gray-700' : 'bg-white text-gray-800 hover:bg-gray-50'
                     }`}
                     style={{ filter: 'none', WebkitFilter: 'none' }}
@@ -2216,7 +2227,7 @@ export default function BookReaderPage() {
                   <button
                     onClick={goToNextPage}
                     disabled={isFlipping}
-                    className={`hidden lg:block absolute right-[-80px] top-1/2 -translate-y-1/2 p-4 rounded-full shadow-lg transition-all hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed z-10 ${
+                    className={`hidden lg:block absolute right-[-80px] top-[150px] p-4 rounded-full shadow-lg transition-all hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed z-10 ${
                       isDarkMode ? 'bg-gray-800 text-white hover:bg-gray-700' : 'bg-white text-gray-800 hover:bg-gray-50'
                     }`}
                     style={{ filter: 'none', WebkitFilter: 'none' }}
@@ -2652,7 +2663,7 @@ function ChapterTitlePage({ chapter, pageNumber, chapterIndex, isDarkMode }) {
       <div className="flex flex-col justify-center items-center p-12 h-full">
         <div className="text-center space-y-6 max-w-2xl">
           {/* Chapter Number */}
-          <p
+          {/* <p
             className={`text-sm uppercase tracking-wide select-text ${isDarkMode ? 'text-gray-400' : 'text-gray-600'
               }`}
           >
@@ -2708,12 +2719,12 @@ function TopicTitlePage({ topic, pageNumber, isDarkMode }) {
       <div className="flex flex-col justify-center items-center p-12 h-full">
         <div className="text-center space-y-6 max-w-2xl">
           {/* Topic Label */}
-          <p
+          {/* <p
             className={`text-sm uppercase tracking-wide select-text ${isDarkMode ? 'text-gray-400' : 'text-gray-600'
               }`}
           >
             TOPIC
-          </p>
+          </p> */}
 
           {/* Topic Title */}
           <h2
@@ -2771,12 +2782,12 @@ function SubtopicTitlePage({ subtopic, topicTitle, pageNumber, isDarkMode }) {
           </p>
 
           {/* Subtopic Label */}
-          <p
+          {/* <p
             className={`text-sm uppercase tracking-wide select-text ${isDarkMode ? 'text-gray-400' : 'text-gray-600'
               }`}
           >
             SUBTOPIC
-          </p>
+          </p> */}
 
           {/* Subtopic Title */}
           <h2

@@ -2,6 +2,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function AuthorBooksPage() {
   const router = useRouter();
@@ -17,6 +18,28 @@ export default function AuthorBooksPage() {
   const [editingBookId, setEditingBookId] = useState(null);
   const savingTopics = useRef(new Set());
   const savingSubtopics = useRef(new Set());
+
+  // Clone Topic Modal State
+  const [showCloneTopicModal, setShowCloneTopicModal] = useState(false);
+  const [allBooks, setAllBooks] = useState([]);
+  const [selectedSourceBook, setSelectedSourceBook] = useState('');
+  const [availableTopics, setAvailableTopics] = useState([]);
+  const [selectedTopics, setSelectedTopics] = useState([]);
+  const [topicTitles, setTopicTitles] = useState({});
+
+  // Clone Subtopic Modal State
+  const [showCloneSubtopicModal, setShowCloneSubtopicModal] = useState(false);
+  const [selectedSourceBookForSubtopic, setSelectedSourceBookForSubtopic] = useState('');
+  const [availableTopicsForSubtopic, setAvailableTopicsForSubtopic] = useState([]);
+  const [selectedSourceTopic, setSelectedSourceTopic] = useState('');
+  const [availableSubtopics, setAvailableSubtopics] = useState([]);
+  const [selectedSubtopics, setSelectedSubtopics] = useState([]);
+  const [subtopicTitles, setSubtopicTitles] = useState({});
+  const [targetTopicIndex, setTargetTopicIndex] = useState(null);
+
+  // Sync Changes Modal State
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
 
   useEffect(() => {
     fetchBooks();
@@ -502,7 +525,482 @@ export default function AuthorBooksPage() {
     }
   };
 
-  const handleReset = () => {
+  // Clone Topic Handlers
+  const handleOpenCloneTopicModal = async () => {
+    if (!bookTitle.trim()) {
+      alert('Please enter a book title first');
+      return;
+    }
+
+    let bookId = currentBookId;
+
+    // Create book if not already created
+    if (!bookId) {
+      setLoading(true);
+      const res = await fetch('/api/author/books', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: bookTitle })
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        bookId = data.bookId;
+        setCurrentBookId(bookId);
+        saveFormState(bookTitle, bookId, topics);
+        console.log('Book created with ID:', bookId);
+      } else {
+        alert('Error: ' + data.error);
+        setLoading(false);
+        return;
+      }
+      setLoading(false);
+    }
+    
+    setLoading(true);
+    try {
+      // Fetch all books from superadmin API
+      const res = await fetch('/api/superadmin/books');
+      const data = await res.json();
+      if (data.success) {
+        setAllBooks(data.data || []);
+        setShowCloneTopicModal(true);
+      } else {
+        alert('Failed to load books');
+      }
+    } catch (error) {
+      console.error('Error loading books:', error);
+      alert('Failed to load books');
+    }
+    setLoading(false);
+  };
+
+  const handleSourceBookChange = async (bookId) => {
+    setSelectedSourceBook(bookId);
+    setSelectedTopics([]);
+    setTopicTitles({});
+    
+    if (!bookId) {
+      setAvailableTopics([]);
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      // Fetch topics for selected book
+      const res = await fetch(`/api/superadmin/topics?bookId=${bookId}`);
+      const data = await res.json();
+      if (data.success) {
+        setAvailableTopics(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading topics:', error);
+    }
+    setLoading(false);
+  };
+
+  const handleTopicSelection = (topicId) => {
+    setSelectedTopics(prev => {
+      if (prev.includes(topicId)) {
+        // Remove topic
+        const newSelected = prev.filter(id => id !== topicId);
+        const newTitles = { ...topicTitles };
+        delete newTitles[topicId];
+        setTopicTitles(newTitles);
+        return newSelected;
+      } else {
+        // Add topic
+        const topic = availableTopics.find(t => t.id === topicId);
+        if (topic) {
+          setTopicTitles(prev => ({ ...prev, [topicId]: topic.name }));
+        }
+        return [...prev, topicId];
+      }
+    });
+  };
+
+  const handleSelectAllTopics = () => {
+    if (selectedTopics.length === availableTopics.length) {
+      // Deselect all
+      setSelectedTopics([]);
+      setTopicTitles({});
+    } else {
+      // Select all
+      const allIds = availableTopics.map(t => t.id);
+      const titles = {};
+      availableTopics.forEach(t => {
+        titles[t.id] = t.name;
+      });
+      setSelectedTopics(allIds);
+      setTopicTitles(titles);
+    }
+  };
+
+  const handleCloneTopicsSave = async () => {
+    if (selectedTopics.length === 0) {
+      alert('Please select at least one topic to clone');
+      return;
+    }
+    
+    if (!currentBookId) {
+      alert('Book ID not found. Please try again.');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const clonedTopicIds = [];
+      
+      for (const topicId of selectedTopics) {
+        const newTopicName = topicTitles[topicId];
+        
+        console.log('Cloning topic:', topicId, 'to book:', currentBookId, 'with name:', newTopicName);
+        
+        // Clone the topic using superadmin API
+        const res = await fetch('/api/superadmin/clone-topic', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic_id: topicId,
+            new_book_id: parseInt(currentBookId),
+            new_topic_name: newTopicName
+          })
+        });
+        
+        const data = await res.json();
+        if (!data.success) {
+          alert(`Failed to clone topic: ${data.error}`);
+          setLoading(false);
+          return;
+        }
+        
+        // Store the new topic ID
+        if (data.data && data.data.newTopicId) {
+          clonedTopicIds.push({
+            id: data.data.newTopicId,
+            name: newTopicName,
+            originalId: topicId
+          });
+        }
+      }
+      
+      // Fetch the cloned topics with their subtopics from database
+      const topicsRes = await fetch(`/api/superadmin/topics?bookId=${currentBookId}`);
+      const topicsData = await topicsRes.json();
+      
+      if (topicsData.success) {
+        const newTopics = [...topics];
+        
+        // Add cloned topics to the form state
+        for (const clonedInfo of clonedTopicIds) {
+          const topicFromDb = topicsData.data.find(t => t.id === clonedInfo.id);
+          
+          if (topicFromDb) {
+            // Fetch original topic's subtopics to get mapping
+            const originalSubtopicsRes = await fetch(`/api/superadmin/subtopics?topicId=${clonedInfo.originalId}`);
+            const originalSubtopicsData = await originalSubtopicsRes.json();
+            const originalSubtopics = originalSubtopicsData.success ? originalSubtopicsData.data : [];
+            
+            // Fetch subtopics for this cloned topic
+            const subtopicsRes = await fetch(`/api/superadmin/subtopics?topicId=${topicFromDb.id}`);
+            const subtopicsData = await subtopicsRes.json();
+            
+            const subtopics = subtopicsData.success ? (subtopicsData.data || []).map((s, idx) => {
+              // Find matching original subtopic by name or index
+              const originalSubtopic = originalSubtopics[idx];
+              return {
+                id: Date.now() + Math.random() + idx,
+                name: s.name,
+                subtopicId: s.id,
+                isCloned: true,
+                originalSubtopicId: originalSubtopic ? originalSubtopic.id : null
+              };
+            }) : [];
+            
+            newTopics.push({
+              id: Date.now() + Math.random(),
+              name: topicFromDb.name,
+              topicId: topicFromDb.id,
+              hasSubtopics: subtopics.length > 0,
+              subtopics: subtopics,
+              isCloned: true,
+              originalTopicId: clonedInfo.originalId,
+              cloneId: topicFromDb.clone_id
+            });
+          }
+        }
+        
+        setTopics(newTopics);
+        saveFormState(bookTitle, currentBookId, newTopics);
+      }
+      
+      // Refresh the books list
+      await fetchBooks();
+      
+      // Close modal and reset
+      setShowCloneTopicModal(false);
+      setSelectedSourceBook('');
+      setAvailableTopics([]);
+      setSelectedTopics([]);
+      setTopicTitles({});
+      
+      alert('Topics cloned successfully!');
+    } catch (error) {
+      console.error('Error cloning topics:', error);
+      alert('Failed to clone topics');
+    }
+    setLoading(false);
+  };
+
+  // Clone Subtopic Handlers
+  const handleOpenCloneSubtopicModal = async (topicIndex) => {
+    if (!bookTitle.trim()) {
+      alert('Please enter a book title first');
+      return;
+    }
+
+    let bookId = currentBookId;
+
+    // Create book if not already created
+    if (!bookId) {
+      setLoading(true);
+      const res = await fetch('/api/author/books', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: bookTitle })
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        bookId = data.bookId;
+        setCurrentBookId(bookId);
+        saveFormState(bookTitle, bookId, topics);
+      } else {
+        alert('Error: ' + data.error);
+        setLoading(false);
+        return;
+      }
+      setLoading(false);
+    }
+    
+    const topic = topics[topicIndex];
+    if (!topic.topicId) {
+      alert('Please save the topic first');
+      return;
+    }
+    
+    setTargetTopicIndex(topicIndex);
+    setLoading(true);
+    try {
+      // Fetch all books
+      const res = await fetch('/api/superadmin/books');
+      const data = await res.json();
+      if (data.success) {
+        setAllBooks(data.data || []);
+        setShowCloneSubtopicModal(true);
+      } else {
+        alert('Failed to load books');
+      }
+    } catch (error) {
+      console.error('Error loading books:', error);
+      alert('Failed to load books');
+    }
+    setLoading(false);
+  };
+
+  const handleSourceBookChangeForSubtopic = async (bookId) => {
+    setSelectedSourceBookForSubtopic(bookId);
+    setSelectedSourceTopic('');
+    setAvailableSubtopics([]);
+    setSelectedSubtopics([]);
+    setSubtopicTitles({});
+    
+    if (!bookId) {
+      setAvailableTopicsForSubtopic([]);
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      // Fetch topics for selected book
+      const res = await fetch(`/api/superadmin/topics?bookId=${bookId}`);
+      const data = await res.json();
+      if (data.success) {
+        setAvailableTopicsForSubtopic(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading topics:', error);
+    }
+    setLoading(false);
+  };
+
+  const handleSourceTopicChange = async (topicId) => {
+    setSelectedSourceTopic(topicId);
+    setSelectedSubtopics([]);
+    setSubtopicTitles({});
+    
+    if (!topicId) {
+      setAvailableSubtopics([]);
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      // Fetch subtopics for selected topic
+      const res = await fetch(`/api/superadmin/subtopics?topicId=${topicId}`);
+      const data = await res.json();
+      if (data.success) {
+        setAvailableSubtopics(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading subtopics:', error);
+    }
+    setLoading(false);
+  };
+
+  const handleSubtopicSelection = (subtopicId) => {
+    setSelectedSubtopics(prev => {
+      if (prev.includes(subtopicId)) {
+        // Remove subtopic
+        const newSelected = prev.filter(id => id !== subtopicId);
+        const newTitles = { ...subtopicTitles };
+        delete newTitles[subtopicId];
+        setSubtopicTitles(newTitles);
+        return newSelected;
+      } else {
+        // Add subtopic
+        const subtopic = availableSubtopics.find(s => s.id === subtopicId);
+        if (subtopic) {
+          setSubtopicTitles(prev => ({ ...prev, [subtopicId]: subtopic.name }));
+        }
+        return [...prev, subtopicId];
+      }
+    });
+  };
+
+  const handleSelectAllSubtopics = () => {
+    if (selectedSubtopics.length === availableSubtopics.length) {
+      // Deselect all
+      setSelectedSubtopics([]);
+      setSubtopicTitles({});
+    } else {
+      // Select all
+      const allIds = availableSubtopics.map(s => s.id);
+      const titles = {};
+      availableSubtopics.forEach(s => {
+        titles[s.id] = s.name;
+      });
+      setSelectedSubtopics(allIds);
+      setSubtopicTitles(titles);
+    }
+  };
+
+  const handleCloneSubtopicsSave = async () => {
+    if (selectedSubtopics.length === 0) {
+      alert('Please select at least one subtopic to clone');
+      return;
+    }
+    
+    if (targetTopicIndex === null) {
+      alert('Target topic not found');
+      return;
+    }
+    
+    if (!currentBookId) {
+      alert('Book ID not found. Please try again.');
+      return;
+    }
+    
+    const targetTopic = topics[targetTopicIndex];
+    
+    setLoading(true);
+    try {
+      for (const subtopicId of selectedSubtopics) {
+        const newSubtopicName = subtopicTitles[subtopicId];
+        
+        // First create the subtopic
+        const createRes = await fetch('/api/author/subtopics', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newSubtopicName,
+            book_id: parseInt(currentBookId),
+            topic_id: targetTopic.topicId
+          })
+        });
+        
+        const createData = await createRes.json();
+        if (!createData.success) {
+          alert(`Failed to create subtopic: ${createData.error}`);
+          setLoading(false);
+          return;
+        }
+        
+        const newSubtopicId = createData.id;
+        
+        // Then clone pages from original subtopic using superadmin API
+        const cloneRes = await fetch('/api/superadmin/clone-subtopic-pages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            originalSubtopicId: subtopicId,
+            newSubtopicId: newSubtopicId,
+            newTopicId: targetTopic.topicId
+          })
+        });
+        
+        const cloneData = await cloneRes.json();
+        if (!cloneData.success) {
+          alert(`Failed to clone subtopic pages: ${cloneData.error}`);
+        }
+        
+        // Update local state
+        const newTopics = [...topics];
+        if (!newTopics[targetTopicIndex].subtopics) {
+          newTopics[targetTopicIndex].subtopics = [];
+        }
+        newTopics[targetTopicIndex].subtopics.push({
+          id: Date.now() + Math.random(),
+          name: newSubtopicName,
+          subtopicId: newSubtopicId,
+          isCloned: true,
+          originalSubtopicId: subtopicId
+        });
+        newTopics[targetTopicIndex].hasSubtopics = true;
+        setTopics(newTopics);
+        saveFormState(bookTitle, currentBookId, newTopics);
+      }
+      
+      // Close modal and reset
+      setShowCloneSubtopicModal(false);
+      setSelectedSourceBookForSubtopic('');
+      setAvailableTopicsForSubtopic([]);
+      setSelectedSourceTopic('');
+      setAvailableSubtopics([]);
+      setSelectedSubtopics([]);
+      setSubtopicTitles({});
+      setTargetTopicIndex(null);
+      
+      alert('Subtopics cloned successfully!');
+    } catch (error) {
+      console.error('Error cloning subtopics:', error);
+      alert('Failed to clone subtopics');
+    }
+    setLoading(false);
+  };
+
+  const handleReset = async (skipDeletion = false) => {
+    // If creating a new book (not editing), delete the auto-created book on cancel
+    // Skip deletion when book creation is successfully completed
+    if (currentBookId && !editingBookId && !skipDeletion) {
+      try {
+        await fetch(`/api/author/books?id=${currentBookId}`, { method: 'DELETE' });
+        await fetchBooks(); // Refresh the book list
+      } catch (error) {
+        console.error('Error deleting incomplete book:', error);
+      }
+    }
+    
     setBookTitle('');
     setCurrentBookId(null);
     setTopics([]);
@@ -511,39 +1009,166 @@ export default function AuthorBooksPage() {
     clearFormState();
   };
 
+
+
+  
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (editingBookId) {
-      // Update existing book title
-      const res = await fetch('/api/author/books', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          id: editingBookId,
-          title: bookTitle 
-        })
-      });
-      
-      const data = await res.json();
-      if (data.success) {
-        await fetchBooks();
-        handleReset();
-        alert('Book updated successfully!');
-      } else {
-        alert('Error: ' + data.error);
+    // Ensure the book title is saved to DB before showing sync options
+    const ensureTitleSaved = async () => {
+      const idToUpdate = editingBookId || currentBookId;
+      if (!idToUpdate) return;
+
+      try {
+        setLoading(true);
+        const res = await fetch('/api/author/books', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: idToUpdate, title: bookTitle })
+        });
+        const data = await res.json();
+        if (data.success) {
+          await fetchBooks();
+          saveFormState(bookTitle, idToUpdate, topics);
+        } else {
+          console.error('Failed to update book title before sync:', data.error);
+        }
+      } catch (error) {
+        console.error('Error updating title before sync:', error);
       }
+      setLoading(false);
+    };
+
+    if (editingBookId) {
+      // Update existing book - save title first, then show sync modal
+      await ensureTitleSaved();
+      setIsEditMode(true);
+      setShowSyncModal(true);
     } else {
       // Create new book - topics should already be saved via auto-save
-      // Just finalize and close the form
       if (!currentBookId) {
         alert('Please add at least one topic before finishing');
         return;
       }
-      await fetchBooks();
-      handleReset();
-      alert('Book created successfully!');
+      await ensureTitleSaved();
+      setIsEditMode(false);
+      setShowSyncModal(true);
     }
+  };
+
+  const handleSyncChanges = async (syncEverywhere) => {
+    setLoading(true);
+    try {
+      if (syncEverywhere) {
+        // Build changes array for cloned topics that have been modified
+        const changes = [];
+        const clonedTopicsInfo = [];
+        
+        for (const topic of topics) {
+          if (topic.isCloned && topic.originalTopicId) {
+            // Track this as a cloned topic
+            clonedTopicsInfo.push({
+              newTopicId: topic.topicId,
+              originalTopicId: topic.originalTopicId,
+              subtopics: (topic.subtopics || []).map(s => ({
+                newSubtopicId: s.subtopicId,
+                originalSubtopicId: s.originalSubtopicId || null,
+                isCloned: s.isCloned || false
+              }))
+            });
+            
+            // Track name change as a modification to sync everywhere
+            changes.push({
+              type: 'topic',
+              id: topic.topicId,
+              originalId: topic.originalTopicId,
+              data: {
+                name: topic.name,
+                description: null
+              },
+              syncToOriginal: true
+            });
+            
+            // Track subtopic changes
+            for (const subtopic of (topic.subtopics || [])) {
+              if (subtopic.isCloned && subtopic.originalSubtopicId) {
+                changes.push({
+                  type: 'subtopic',
+                  id: subtopic.subtopicId,
+                  originalId: subtopic.originalSubtopicId,
+                  data: {
+                    name: subtopic.name,
+                    description: null
+                  },
+                  syncToOriginal: true
+                });
+              }
+            }
+          }
+        }
+        
+        // Call sync-changes API
+        const res = await fetch('/api/superadmin/sync-changes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            changes: changes,
+            clonedTopics: clonedTopicsInfo,
+            currentTopics: topics.map(t => ({
+              topicId: t.topicId,
+              name: t.name,
+              isCloned: t.isCloned || false,
+              subtopics: (t.subtopics || []).map(s => ({
+                subtopicId: s.subtopicId,
+                name: s.name,
+                isCloned: s.isCloned || false
+              }))
+            }))
+          })
+        });
+        
+        const data = await res.json();
+        if (!data.success) {
+          alert('Failed to sync changes: ' + data.error);
+          setLoading(false);
+          return;
+        }
+      }
+      
+      // Handle based on mode (create or edit)
+      if (isEditMode) {
+        // Update existing book
+        const res = await fetch('/api/author/books', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            id: editingBookId,
+            title: bookTitle 
+          })
+        });
+        
+        const data = await res.json();
+        if (data.success) {
+          await fetchBooks();
+          setShowSyncModal(false);
+          handleReset(true); // Skip deletion since book was successfully updated
+          alert('Book updated successfully!');
+        } else {
+          alert('Error: ' + data.error);
+        }
+      } else {
+        // Finalize book creation
+        await fetchBooks();
+        setShowSyncModal(false);
+        handleReset(true); // Skip deletion since book was successfully created
+        alert('Book created successfully!');
+      }
+    } catch (error) {
+      console.error('Error syncing changes:', error);
+      alert('Failed to sync changes');
+    }
+    setLoading(false);
   };
 
   const handleDelete = async (id) => {
@@ -670,16 +1295,30 @@ export default function AuthorBooksPage() {
               <label className="block text-sm font-medium text-gray-700">
                 Topics * {topics.length > 0 && `(${topics.length})`}
               </label>
-              <button
-                type="button"
-                onClick={handleAddTopic}
-                className="inline-flex items-center px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
-              >
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add Topic
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddTopic}
+                  className="inline-flex items-center px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
+                >
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Topic
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenCloneTopicModal}
+                  className="inline-flex items-center px-3 py-1.5 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition text-sm font-medium"
+                  title="Clone Topic"
+                >
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v10M16 7v10M3 12h18" />
+                  </svg>
+                  Clone Topic
+                </button>
+              </div>
             </div>
 
             {topics.length === 0 && (
@@ -703,6 +1342,7 @@ export default function AuthorBooksPage() {
                         className="flex-1 px-3 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition text-black "
                         value={topic.name}
                         onChange={(e) => handleTopicChange(index, e.target.value)}
+                        onBlur={() => handleTopicBlur(index)}
                         required
                       />
                       <button
@@ -743,6 +1383,18 @@ export default function AuthorBooksPage() {
                         </svg>
                         Add Subtopic
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenCloneSubtopicModal(index)}
+                        className="flex-1 px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition text-sm font-medium"
+                        title="Clone Subtopic"
+                      >
+                        <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v10M16 7v10M3 12h18" />
+                        </svg>
+                        Clone Subtopic
+                      </button>
                     </div>
                     
                     {topic.topicId && (
@@ -773,6 +1425,7 @@ export default function AuthorBooksPage() {
                                 className="flex-1 px-3 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition text-sm text-black"
                                 value={subtopic.name}
                                 onChange={(e) => handleSubtopicChange(index, subIdx, e.target.value)}
+                                onBlur={() => handleSubtopicBlur(index, subIdx)}
                               />
                               <button
                                 type="button"
@@ -951,6 +1604,19 @@ export default function AuthorBooksPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
                         </button>
+
+                        <Link 
+                          href={`/book/${book.id}`}
+                          className="inline-flex items-center px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition text-sm font-medium"
+                          title="View Book"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                        </Link>
+
+                        
                       </div>
                     </td>
                   </tr>
@@ -1009,7 +1675,7 @@ export default function AuthorBooksPage() {
                                 </span>
                               </td>
                               <td className="px-6 py-2 text-xs text-gray-500">
-                                {subtopic.description || 'No description'}
+                                {subtopic.description}
                               </td>
                             </tr>
                           ))
@@ -1089,6 +1755,8 @@ export default function AuthorBooksPage() {
                   </svg>
                   Delete
                 </button>
+               
+
               </div>
 
               {/* Topics List */}
@@ -1158,6 +1826,332 @@ export default function AuthorBooksPage() {
       )}
     </div>
   </div>
+
+  {/* Clone Topic Modal */}
+  {showCloneTopicModal && (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">Clone Topics</h2>
+            <button
+              onClick={() => {
+                setShowCloneTopicModal(false);
+                setSelectedSourceBook('');
+                setAvailableTopics([]);
+                setSelectedTopics([]);
+                setTopicTitles({});
+              }}
+              className="text-gray-400 hover:text-gray-600 p-2"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {/* Select Source Book */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select Source Book *
+              </label>
+              <select
+                value={selectedSourceBook}
+                onChange={(e) => handleSourceBookChange(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-black"
+              >
+                <option value="">-- Select a book --</option>
+                {allBooks.filter(book => book.id !== currentBookId).map(book => (
+                  <option key={book.id} value={book.id}>{book.title}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Select Topics */}
+            {availableTopics.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Select Topics to Clone *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleSelectAllTopics}
+                    className="text-sm text-indigo-600 hover:text-indigo-800"
+                  >
+                    {selectedTopics.length === availableTopics.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                </div>
+                <div className="border border-gray-300 rounded-lg p-3 max-h-48 overflow-y-auto space-y-2">
+                  {availableTopics.map(topic => (
+                    <label key={topic.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                      <input
+                        type="checkbox"
+                        checked={selectedTopics.includes(topic.id)}
+                        onChange={() => handleTopicSelection(topic.id)}
+                        className="w-4 h-4 text-indigo-600"
+                      />
+                      <span className="text-sm text-black">{topic.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Edit Topic Titles */}
+            {selectedTopics.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Edit Topic Titles
+                </label>
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {selectedTopics.map((topicId, idx) => (
+                    <div key={topicId}>
+                      <label className="block text-xs text-gray-600 mb-1">
+                        Topic {idx + 1}
+                      </label>
+                      <input
+                        type="text"
+                        value={topicTitles[topicId] || ''}
+                        onChange={(e) => setTopicTitles(prev => ({ ...prev, [topicId]: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-black"
+                        placeholder="Topic title"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={handleCloneTopicsSave}
+              disabled={loading || selectedTopics.length === 0}
+              className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 transition font-medium"
+            >
+              {loading ? 'Cloning...' : 'Clone Topics'}
+            </button>
+            <button
+              onClick={() => {
+                setShowCloneTopicModal(false);
+                setSelectedSourceBook('');
+                setAvailableTopics([]);
+                setSelectedTopics([]);
+                setTopicTitles({});
+              }}
+              className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-medium"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* Clone Subtopic Modal */}
+  {showCloneSubtopicModal && (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">Clone Subtopics</h2>
+            <button
+              onClick={() => {
+                setShowCloneSubtopicModal(false);
+                setSelectedSourceBookForSubtopic('');
+                setAvailableTopicsForSubtopic([]);
+                setSelectedSourceTopic('');
+                setAvailableSubtopics([]);
+                setSelectedSubtopics([]);
+                setSubtopicTitles({});
+                setTargetTopicIndex(null);
+              }}
+              className="text-gray-400 hover:text-gray-600 p-2"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {/* Select Source Book */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select Source Book *
+              </label>
+              <select
+                value={selectedSourceBookForSubtopic}
+                onChange={(e) => handleSourceBookChangeForSubtopic(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-black"
+              >
+                <option value="">-- Select a book --</option>
+                {allBooks.filter(book => book.id !== currentBookId).map(book => (
+                  <option key={book.id} value={book.id}>{book.title}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Select Topic */}
+            {availableTopicsForSubtopic.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Source Topic *
+                </label>
+                <select
+                  value={selectedSourceTopic}
+                  onChange={(e) => handleSourceTopicChange(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-black"
+                >
+                  <option value="">-- Select a topic --</option>
+                  {availableTopicsForSubtopic.map(topic => (
+                    <option key={topic.id} value={topic.id}>{topic.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Select Subtopics */}
+            {availableSubtopics.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Select Subtopics to Clone *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleSelectAllSubtopics}
+                    className="text-sm text-indigo-600 hover:text-indigo-800"
+                  >
+                    {selectedSubtopics.length === availableSubtopics.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                </div>
+                <div className="border border-gray-300 rounded-lg p-3 max-h-48 overflow-y-auto space-y-2">
+                  {availableSubtopics.map(subtopic => (
+                    <label key={subtopic.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                      <input
+                        type="checkbox"
+                        checked={selectedSubtopics.includes(subtopic.id)}
+                        onChange={() => handleSubtopicSelection(subtopic.id)}
+                        className="w-4 h-4 text-indigo-600"
+                      />
+                      <span className="text-sm text-black">{subtopic.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Edit Subtopic Titles */}
+            {selectedSubtopics.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Edit Subtopic Titles
+                </label>
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {selectedSubtopics.map((subtopicId, idx) => (
+                    <div key={subtopicId}>
+                      <label className="block text-xs text-gray-600 mb-1">
+                        Subtopic {idx + 1}
+                      </label>
+                      <input
+                        type="text"
+                        value={subtopicTitles[subtopicId] || ''}
+                        onChange={(e) => setSubtopicTitles(prev => ({ ...prev, [subtopicId]: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-black"
+                        placeholder="Subtopic title"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={handleCloneSubtopicsSave}
+              disabled={loading || selectedSubtopics.length === 0}
+              className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 transition font-medium"
+            >
+              {loading ? 'Cloning...' : 'Clone Subtopics'}
+            </button>
+            <button
+              onClick={() => {
+                setShowCloneSubtopicModal(false);
+                setSelectedSourceBookForSubtopic('');
+                setAvailableTopicsForSubtopic([]);
+                setSelectedSourceTopic('');
+                setAvailableSubtopics([]);
+                setSelectedSubtopics([]);
+                setSubtopicTitles({});
+                setTargetTopicIndex(null);
+              }}
+              className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-medium"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* Sync Changes Modal */}
+  {showSyncModal && (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">Sync Changes</h2>
+            <button
+              onClick={() => setShowSyncModal(false)}
+              className="text-gray-400 hover:text-gray-600 p-2"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <p className="text-gray-700 mb-6">
+            You have cloned topics/subtopics and made changes. How would you like to apply these changes?
+          </p>
+
+          <div className="space-y-3">
+            <button
+              onClick={() => handleSyncChanges(false)}
+              disabled={loading}
+              className="w-full px-6 py-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 transition font-medium text-left"
+            >
+              <div className="font-semibold text-lg mb-1">Only This Book</div>
+              <div className="text-sm text-indigo-100">Changes will only affect this book</div>
+            </button>
+
+            <button
+              onClick={() => handleSyncChanges(true)}
+              disabled={loading}
+              className="w-full px-6 py-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-400 transition font-medium text-left"
+            >
+              <div className="font-semibold text-lg mb-1">Sync Everywhere</div>
+              <div className="text-sm text-orange-100">Apply changes to all cloned instances across books</div>
+            </button>
+          </div>
+
+          <button
+            onClick={() => setShowSyncModal(false)}
+            disabled={loading}
+            className="w-full mt-4 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-medium"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
 
   <style jsx>{`
     @keyframes slideDown {
