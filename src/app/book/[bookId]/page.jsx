@@ -1331,7 +1331,6 @@ export default function BookReaderPage() {
       transform: scale(1);
       transform-origin: center top;
       max-width: ${A4_WIDTH +200}px;
-      padding: 0 5px;
     }
   }
   
@@ -1351,7 +1350,6 @@ export default function BookReaderPage() {
       transform-origin: unset;
       max-width: 900px;
       margin: 0 auto;
-      padding: 0 12px;
     }
   }
       @media (min-width: 1150px) and (max-width: 1300px) {
@@ -1360,7 +1358,6 @@ export default function BookReaderPage() {
       transform-origin: unset;
       max-width: 1000px;
       margin: 0 auto;
-      padding: 0 12px;
     }
   }
 
